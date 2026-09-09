@@ -1,0 +1,24 @@
+{
+  "name": "payment-site",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc -b && vite build --configLoader runner",
+    "build:test": "npm run build -- --mode test",
+    "build:prod": "npm run build -- --mode production",
+    "test": "node --experimental-strip-types --test tests/**/*.test.ts",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "vue": "^3.5.0",
+    "vue-router": "^4.5.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.2.0",
+    "typescript": "^5.7.0",
+    "vite": "^6.0.0",
+    "vue-tsc": "^2.2.0"
+  }
+}

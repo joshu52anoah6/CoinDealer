@@ -49,6 +49,18 @@ export interface RechargeConfigResponse {
   list?: RechargeConfig[]
 }
 
+export interface CoinMerchantRechargeConfig {
+  id: number | string
+  name?: string
+  price?: number
+  gold?: number | string
+  [key: string]: unknown
+}
+
+export interface CoinMerchantRechargeConfigResponse {
+  list?: CoinMerchantRechargeConfig[]
+}
+
 export interface FiatCurrency {
   currencyCode: string
   currencyType?: number
@@ -95,6 +107,7 @@ export interface CreateChannelRechargeOrderResponse {
   currency?: string
   obfuscatedAccountId?: string
   orderId?: string
+  payAmount?: number
   price?: number
   status?: number | string
   payUrl?: string
@@ -114,4 +127,29 @@ export interface CheckRechargeOrderResponse {
   goldBalance?: number
   price?: number
   [key: string]: unknown
+}
+
+export interface MerchantTransferResponse {
+  amount?: number
+  senderGold?: number
+  targetUserGold?: number
+  targetUserId?: string
+  [key: string]: unknown
+}
+
+export interface MerchantBalanceResponse {
+  gold?: number
+  diamond?: number
+  userId?: number | string
+  [key: string]: unknown
+}
+
+export interface MerchantPayProfile {
+  name?: string
+  email?: string
+  phone?: string
+}
+
+export interface SaveMerchantPayProfileResponse extends MerchantPayProfile {
+  success?: boolean
 }

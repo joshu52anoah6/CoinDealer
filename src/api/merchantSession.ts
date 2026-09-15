@@ -43,13 +43,16 @@ function readRole(value: Record<string, unknown>) {
   return candidates.find((candidate) => isMerchantRole(roleValue(candidate))) ? 'merchant' as const : undefined
 }
 
-/** Normalizes common Apifox login response variants into one session shape. */
-export function normalizeMerchantLoginResponse(payload: unknown): MerchantSession | null {
+/** Normalizes the coin-merchant login response into one session shape. */
+export function normalizeMerchantLoginResponse(
+  payload: unknown,
+  options: { assumeMerchantRole?: boolean } = {},
+): MerchantSession | null {
   if (!payload || typeof payload !== 'object') return null
   const value = payload as Record<string, unknown>
   const user = value.user && typeof value.user === 'object' ? value.user as Record<string, unknown> : {}
   const token = firstString(value.token, value.accessToken, value.access_token, user.token, user.accessToken)
-  const role = readRole({ ...value, ...user })
+  const role = readRole({ ...value, ...user }) || (options.assumeMerchantRole && token ? 'merchant' : undefined)
   if (!token || !role) return null
 
   const expiresAtValue = value.expiresAt ?? value.expireAt ?? user.expiresAt ?? user.expireAt

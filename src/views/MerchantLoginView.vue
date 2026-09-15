@@ -18,6 +18,14 @@ async function submit() {
     errorMessage.value = 'Enter your merchant account and password.'
     return
   }
+  if (normalizedAccount.length < 2 || normalizedAccount.length > 32) {
+    errorMessage.value = 'Username must be between 2 and 32 characters.'
+    return
+  }
+  if (password.value.length < 6 || password.value.length > 32) {
+    errorMessage.value = 'Password must be between 6 and 32 characters.'
+    return
+  }
   submitting.value = true
   errorMessage.value = ''
   try {
@@ -29,7 +37,7 @@ async function submit() {
     const redirect = typeof route.query.redirect === 'string' && route.query.redirect.startsWith('/merchant')
       ? route.query.redirect
       : '/merchant/recharge'
-    await router.replace(redirect)
+    await router.replace({ path: '/merchant/profile', query: { next: redirect } })
   } catch (error) {
     errorMessage.value = error instanceof ApiError ? error.message : (error as Error).message || 'Login failed. Please try again.'
   } finally {
@@ -41,13 +49,13 @@ async function submit() {
 <template>
   <main class="page-shell merchant-login-shell">
     <section class="merchant-login-card">
-      <div class="merchant-logo"><span class="brand-dot" /> Recharge <small>MERCHANT</small></div>
+      <div class="merchant-logo"><span class="brand-dot" /> Coin merchant <small>PORTAL</small></div>
       <p class="eyebrow">COIN MERCHANT PORTAL</p>
       <h1>Merchant sign in</h1>
-      <p class="merchant-login-copy">Sign in to recharge a specified user and watch order results in real time.</p>
+      <p class="merchant-login-copy">Sign in to recharge the merchant wallet and transfer gold coins to users.</p>
 
       <form class="merchant-form" @submit.prevent="submit">
-        <label>Account<input v-model="account" autocomplete="username" placeholder="Enter merchant account" /></label>
+        <label>Username<input v-model="account" autocomplete="username" placeholder="Enter coin-merchant username" /></label>
         <label>Password<input v-model="password" type="password" autocomplete="current-password" placeholder="Enter password" /></label>
         <p v-if="errorMessage" class="inline-error">{{ errorMessage }}</p>
         <button class="primary-button" type="submit" :disabled="submitting">

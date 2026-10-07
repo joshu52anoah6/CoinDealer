@@ -3,7 +3,11 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ApiError } from '../api/http'
 import { merchantApi } from '../api/merchant'
-import { isMerchantPayProfileEmpty, normalizeMerchantPayProfile } from '../api/merchantProfile'
+import {
+  isMerchantPayProfileEmpty,
+  isValidMerchantEmail,
+  normalizeMerchantPayProfile,
+} from '../api/merchantProfile'
 import { clearMerchantSession, readMerchantSession } from '../api/merchantAuth'
 
 const route = useRoute()
@@ -74,7 +78,7 @@ async function submit() {
     errorMessage.value = 'Enter the payer email.'
     return
   }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(profile.email)) {
+  if (!isValidMerchantEmail(profile.email)) {
     errorMessage.value = 'Enter a valid email address.'
     return
   }

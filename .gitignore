@@ -1,0 +1,17 @@
+# Dependencies
+node_modules/
+
+# Build output and packaged artifacts
+dist/
+CoinDealer-test-*.zip
+CoinDealer-prod-*.zip
+
+# Logs and TypeScript build cache
+*.log
+*.tsbuildinfo
+
+# Local editor and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

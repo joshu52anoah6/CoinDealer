@@ -129,6 +129,22 @@ export interface CheckRechargeOrderResponse {
   [key: string]: unknown
 }
 
+export type RechargeOrderStatusFilter = 0 | 1 | 2 | 3 | 4
+
+export interface RechargeOrderItem {
+  id?: string
+  status?: number
+  gold?: number
+  goldBalance?: number
+  price?: number
+  [key: string]: unknown
+}
+
+export interface RechargeOrderListResponse {
+  list?: RechargeOrderItem[]
+  total?: number
+}
+
 export interface MerchantTransferResponse {
   amount?: number
   senderGold?: number
@@ -142,6 +158,41 @@ export interface MerchantBalanceResponse {
   diamond?: number
   userId?: number | string
   [key: string]: unknown
+}
+
+export interface MerchantUserInfoResponse extends MerchantBalanceResponse {
+  avatar?: string
+  flagIcon?: string
+  isAnchor?: boolean
+  nickname?: string
+  prettyId?: number | string
+  userType?: number
+  vipLevel?: number
+}
+
+export interface MerchantTransferRecordListInput {
+  endTime?: number
+  pageIndex?: number
+  pageSize?: number
+  startTime?: number
+  targetUserId?: string
+}
+
+export interface MerchantTransferRecordItem {
+  amount?: number
+  createdAt?: number
+  createdAtText?: string
+  id?: string
+  targetAvatar?: string
+  targetNickname?: string
+  targetUserId?: string
+}
+
+export interface MerchantTransferRecordListResponse {
+  list?: MerchantTransferRecordItem[]
+  pageIndex?: number
+  pageSize?: number
+  total?: number
 }
 
 export interface MerchantPayProfile {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ApiError } from '../api/http'
 import { rechargeApi } from '../api/recharge'
@@ -12,8 +12,6 @@ const success = ref(false)
 const gold = ref<number | null>(null)
 const balance = ref<number | null>(null)
 const errorMessage = ref('')
-let timer: number | undefined
-
 async function checkOrder() {
   if (!orderId.value || checking.value) return
   checking.value = true
@@ -22,7 +20,6 @@ async function checkOrder() {
     success.value = Boolean(response.success)
     gold.value = typeof response.gold === 'number' ? response.gold : null
     balance.value = typeof response.goldBalance === 'number' ? response.goldBalance : null
-    if (success.value && timer) window.clearInterval(timer)
   } catch (error) {
     errorMessage.value = error instanceof ApiError ? error.message : 'Unable to check order status.'
   } finally {
@@ -38,11 +35,6 @@ onMounted(() => {
     return
   }
   checkOrder()
-  timer = window.setInterval(checkOrder, 3000)
-})
-
-onUnmounted(() => {
-  if (timer) window.clearInterval(timer)
 })
 </script>
 

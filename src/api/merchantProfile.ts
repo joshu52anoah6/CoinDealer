@@ -19,3 +19,7 @@ export function isMerchantPayProfileEmpty(value: unknown) {
   const profile = normalizeMerchantPayProfile(value)
   return !profile.name && !profile.email && !profile.phone
 }
+
+export function isValidMerchantEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())
+}

@@ -1,224 +1,130 @@
-# Payment Site
+# CoinDealer merchant portal
 
-Responsive Vue 3 + Vite frontend for the standalone recharge site.
+Responsive Vue 3 + Vite frontend for the coin-merchant portal. The root URL
+opens the merchant login page; this build is not the standalone end-user
+third-party checkout.
 
-## Merchant sign-in and recharge
+## Routes
 
-The merchant entry point is `/merchant/login`. After sign-in, the short-lived
-token is stored in browser `localStorage`, and a router guard protects
-`/merchant/recharge`. The merchant page accepts a target user ID, creates an
-order through the protected recharge API, and receives `pending`, `success`,
-or `failed` updates over WebSocket. The frontend never fabricates a credit.
+- `/#/` — canonical coin-merchant login page.
+- `/#/merchant/login` — compatibility login URL.
+- `/#/merchant/recharge` — protected merchant portal. Unauthenticated users are
+  returned to `/` with a redirect query.
 
-The default contract is:
+The portal stores the short-lived merchant token in browser `localStorage` and
+never fabricates balances, credits, order status, or transfer results. It uses
+hash routing so browser refreshes request only `/` from the static server; the
+application route after `#` remains entirely in the browser.
 
-- `POST /merchant/login`: `{ "account", "username", "password" }`, returning
-  `token`/`accessToken` and a merchant role (`merchant`, `coin_merchant`, or
-  `ROLE_MERCHANT`).
-- `POST /rechargeCfg/rechargeCfgListByUserId`: sends `Authorization: Bearer
-  <token>` and `{ "userId" }`, returning packages available for the target user.
-- `POST /rechargeOrder/createRechargeOrder`: sends the same token and
-  `{ "userId", "cfgId", "currencyCode" }`, returning `orderId`.
-- `ws(s)://<api-origin>/ws/merchant`: after connecting, the client sends
-  `{ "type": "authenticate", "token" }`, then
-  `{ "type": "subscribe", "orderId" }`. Server messages include the order ID
-  and a status.
+## Coin-merchant API contract
 
-Configure `VITE_MERCHANT_LOGIN_PATH`, `VITE_MERCHANT_CONFIG_PATH`,
-`VITE_MERCHANT_RECHARGE_PATH`, `VITE_MERCHANT_WS_URL`, or
-`VITE_MERCHANT_WS_PATH` when the Apifox project exposes different paths. A
-browser WebSocket cannot set a custom HTTP header, so the token is sent in a
-JSON authentication frame. If Apifox uses different frame names, update the
-central adapter in `src/api/merchantSocket.ts`.
+The implementation follows the dedicated Apifox contracts (latest refresh:
+2026-09-17):
 
-## Apifox endpoints wired
+- `POST /auth/coinMerchantLogin`: `{ "username", "password" }`, where the
+  password is sent as a lowercase MD5 hex digest, returning `{ "token" }`.
+- `POST /coinMerchantRechargeCfg/coinMerchantRechargeCfgListForApp`: `{}` with
+  the merchant `Authorization` token, returning
+  `{ "list": [{ "id", "name", "price", "gold" }] }`.
+- `POST /coinMerchantRechargeCfg/paymentRegionList`: `{}` with the merchant
+  `Authorization` token, returning the HaiPay regions enabled for that coin
+  merchant. The selected `currencyCode` is sent unchanged when creating an
+  order.
+- `POST /rechargeOrder/createCoinMerchantChannelRechargeOrder`: `{ "cfgId",
+  "currencyCode" }`, where `currencyCode` is the selected HaiPay region code,
+  returning an `orderId` and YHPAY `payUrl`.
+- WebSocket `cmd=40`: the authenticated merchant connection receives
+  `{ "orderId", "price", "gold", "goldBalance", "payChannel" }` after a
+  recharge succeeds. Only a notification matching the current `orderId` is
+  accepted.
+- `POST /rechargeOrder/checkRechargeOrderSuccess`: `{ "orderId" }`, used once
+  after order creation and again when the page returns to the foreground,
+  regains connectivity, or the merchant manually refreshes the status.
+- `POST /rechargeOrder/myRechargeOrderList`: status `3` (expired/cancelled) and
+  `4` (failed) are queried when the success check is false. Apifox does not
+  define a recharge-failure WebSocket message.
+- `POST /gold/transferGold`: `{ "targetUserId", "amount" }`; amount is at
+  least `0.01` with at most two decimal places.
+- `POST /userInfo/get`: `{}` to refresh the authenticated merchant's `gold`
+  balance and `userId`.
+- `POST /gold/getCoinMerchantTransferRecordList`: `{ "pageIndex", "pageSize" }`
+  to page through transfers sent by the authenticated merchant. The contract
+  also supports optional `targetUserId`, `startTime`, and `endTime` filters.
 
-- `POST /rechargeCfg/rechargeCfgListByUserId` with `{ "userId" }` (the
-  unauthenticated, user-scoped configuration endpoint).
-- `POST /fiatCurrency/fiatCurrencyListForApp` with `{ "typeFilter": 0 }` to
-  load all currency display metadata.
-- `POST /rechargeOrder/createChannelRechargeOrder` with
-  `{ "userId", "cfgId", "currencyCode" }` (the unauthenticated channel
-  endpoint; Apifox currently documents IDR as the supported channel currency).
-- `POST /rechargeOrder/checkRechargeOrderSuccess` with `{ "orderId" }`.
+Apifox declares `Authorization` as an `apiKey` header, so the client sends the
+stored token as-is without adding a `Bearer ` prefix. The same token is sent as
+the WebSocket `Authorization` query parameter. A dropped or unavailable socket
+is never treated as a failed payment; the documented HTTP status endpoints are
+the fallback and terminal-failure authority.
 
-The authenticated App flow (`/rechargeCfg/rechargeCfgListForApp` and
-`/rechargeOrder/createRechargeOrder`) is intentionally not used by this site.
+Override `VITE_MERCHANT_LOGIN_PATH`, `VITE_MERCHANT_CONFIG_PATH`,
+`VITE_MERCHANT_PAYMENT_REGION_PATH`, `VITE_MERCHANT_RECHARGE_PATH`,
+`VITE_MERCHANT_ORDER_STATUS_PATH`,
+`VITE_MERCHANT_ORDER_LIST_PATH`, `VITE_MERCHANT_TRANSFER_PATH`,
+`VITE_MERCHANT_BALANCE_PATH`, or `VITE_MERCHANT_TRANSFER_RECORD_PATH` only when an
+API gateway rewrites these paths.
+Set `VITE_WEBSOCKET_URL` to the authenticated push endpoint for each build
+environment.
 
-Note: the status endpoint accepts only `orderId` in the Apifox request body,
-but the test environment still returns `Invalid or expired token`. To keep
-unauthenticated status polling on the standalone page, the backend must allow
-this endpoint without authentication or expose a dedicated channel status
-endpoint. There is currently no replacement Apifox path.
+Payload encryption is disabled in the current test and production builds:
+merchant requests send plain JSON with `X-Coin-Merchant-Client: 0`. The code
+retains the same AES-256-GCM feature switch as VueH5. When
+`VITE_MERCHANT_API_ENCRYPTION` is set to `true`, requests and responses use
+`Base64(nonce + ciphertext + tag)`, where the nonce is 12 random bytes, the
+authentication tag is 128 bits, the key is
+`SHA-256(UTF8(VITE_MERCHANT_API_KEY))`, and the request header value changes to
+`1`.
 
-The channel order response includes `orderId` and `payUrl`. After the user
-clicks the payment button, the frontend opens a top-level window, immediately
-sets its `opener` to `null`, and sends that window to the returned HTTPS URL;
-it does not embed the provider page in an iframe. If the browser blocks the
-popup, the page falls back to top-level navigation. The result page polls the
-order status with `orderId`.
+## Build and deployment
 
-Recharge success, wallet-ledger crediting, and H5 gold/diamond balance updates
-remain authoritative on backend webhooks, order queries, and existing pushes.
-The payment frontend never fakes success or writes balances directly.
-
-The frontend directly calls the existing business APIs. The host application
-provides the logged-in user's ID in the checkout URL:
-
-```text
-https://pay.example.com/?userId=123456
-```
-
-The root URL is the only checkout entry point. The compatibility query aliases
-for the user ID are `user_id`, `uid`, and `id`.
-
-## Balance-deficit recommendation contract
-
-VueH5 can navigate from a balance-deficit dialog to the root path with these
-recommendation parameters:
-
-```text
-/?userId=user-42&rechargeCurrency=diamond&requiredAmount=120
-```
-
-- `userId`: the current user ID. It only scopes the existing user package and
-  channel-order APIs. The backend must validate identity, order ownership, and
-  crediting; a URL value is never an authority.
-- `rechargeCurrency`: an optional wallet recommendation, strictly `diamond` or
-  `gold`.
-- `requiredAmount`: an optional deficit matching `/^\d+$/`, up to 30 decimal
-  digits. Empty, decimal, negative, repeated, or oversized values disable the
-  recommendation.
-
-Both recommendation parameters must be valid. After packages load, the page
-uses explicit backend fields such as `actualCreditedDiamonds`,
-`actualCreditedGold`, `creditedDiamonds`, `creditedGold`, and currency-labelled
-`creditedAmount`/`creditedAmounts` to select the smallest package where
-`creditedAmount >= requiredAmount`. These values only affect the default choice
-and hint; they are never sent to `createChannelRechargeOrder` and cannot define
-the charge, identity, or credit.
-
-If the backend returns only gold/coin packages, a diamond recommendation is
-calculated only when explicit credited diamonds or a backend conversion relation
-such as `goldToDiamondRate` or `{ from: "gold", to: "diamond" }` is present. The
-payment frontend never hardcodes a gold-to-diamond ratio. `firstRechargeRatio`
-is not used to derive a bonus in the browser. Explicit credited/actual fields
-are final; only explicit `bonusGold`, `extraGold`, or `bonusDiamonds` fields add
-a separate bonus.
-
-If no package covers the deficit, the page keeps its default selection and asks
-the user to choose a larger package. The user can always change the selection.
-
-Wallet recommendation currency and payment-channel fiat currency are separate.
-The existing `fiatCurrency` IDR/MYR (and any other available channel currency)
-selector and order request remain unchanged.
-
-`app` and `lang` are optional display parameters and do not need to be
-supplied by Sora/VueH5. When omitted, the brand falls back to `Recharge` and
-the page uses its default language. No other configuration parameter is needed
-in the checkout URL.
-
-This URL-level rule is separate from the backend request bodies: after the user
-chooses a package, the frontend sends the supplied `userId`, selected `cfgId`,
-and the selected currency's `currencyCode` to `createChannelRechargeOrder`, as
-required by the current backend contract.
-
-## Deployment
-
-The two environments use the same static build and the same server directory:
-
-| Environment | Site domain | Server directory |
-| --- | --- | --- |
-| Test | `https://third-pay.bigtktool.shop` | `/home/ec2-user/cdn/third-pay` |
-| Production | `https://third-pay.saralive.net` | `/home/ec2-user/cdn/third-pay` |
-
-The API origin follows the VueH5/Sora environment configuration:
-
-| Build mode | API origin |
-| --- | --- |
-| `test` | `https://www.bigtktool.shop` |
-| `production` | `https://www.saralive.net` |
-
-These values are stored in `.env.test` and `.env.production`. The API must allow the payment site origins in CORS.
-
-## Open the payment site from Sora/VueH5
-
-Use the corresponding payment-site domain:
-
-```text
-# Test
-https://third-pay.bigtktool.shop/?userId=123456
-
-# Production
-https://third-pay.saralive.net/?userId=123456
-```
-
-`userId` is required and must be the logged-in Sora/VueH5 user's ID. `user_id`,
-`uid`, and `id` are accepted as compatibility aliases. `app` and `lang` are
-optional display parameters. The page then loads the user-scoped recharge list
-and first-recharge fields from the user-scoped response, creates a channel
-order with `userId` after the user selects a package, redirects to the returned
-`payUrl`, and polls the order result page.
-
-Example from VueH5/Sora (only `userId` is required; the two recommendation
-parameters are optional):
-
-```ts
-const paymentUrl = new URL('https://third-pay.bigtktool.shop/')
-paymentUrl.searchParams.set('userId', String(currentUser.id))
-// Optional balance-deficit hint; it is never used as an order authority.
-paymentUrl.searchParams.set('rechargeCurrency', 'diamond')
-paymentUrl.searchParams.set('requiredAmount', '120')
-window.location.assign(paymentUrl.toString())
-```
-
-The payment page keeps the supplied ID in memory and sends it as `userId` when
-loading the user-scoped recharge list and creating the channel recharge order.
-The backend must validate that ID and persist it on the order; do not use a
-phone number or other sensitive identifier. The third-party payment URL should
-be generated by the backend with the order/user association intact rather than
-modified in the browser. It should be HTTPS, short-lived, single-use where
-supported, and contain only the provider's order token (never a raw `userId`,
-access token, or other reusable credential). The frontend rejects non-HTTPS or
-malformed URLs.
-
-The root checkout link (`/?userId=123456`) normally avoids deep-link issues.
-The web server still needs the SPA fallback for `/payment-result` and any other
-history-mode route. Install the Nginx block in
-`deploy/nginx.third-pay.conf` (or configure the equivalent rewrite) so unknown
-application paths serve `/index.html`.
-
-Build commands:
+Build the test and production environments separately. Do not reuse the
+`dist` output from a different environment:
 
 ```bash
 npm run build:test
 npm run build:prod
 ```
 
-Upload the generated `dist` contents to `/home/ec2-user/cdn/third-pay`. For clean Vue Router URLs, the web server should fall back unknown paths to `index.html`.
+Use the following settings for the coin-merchant H5 deployment in the
+deployment console:
 
-The ready-to-use Nginx server block is in `deploy/nginx.third-pay.conf`. After installing it, validate and reload Nginx:
+| Environment | Site domain | Server directory |
+| --- | --- | --- |
+| Test | `https://coin-merchant.bigtktool.shop` | `/home/ec2-user/cdn/coin-merchant` |
+| Production | `https://coin-merchant.saralive.net` | `/home/ec2-user/cdn/coin-merchant` |
+
+The test and production API and WebSocket origins are injected through
+`.env.test` and `.env.production`, respectively:
+
+| Build mode | API origin | WebSocket endpoint |
+| --- | --- | --- |
+| `test` | `https://www.bigtktool.shop` | `wss://www.bigtktool.shop/ws` |
+| `production` | `https://www.saralive.net` | `wss://saralive.net/ws` |
+
+Package the `dist` contents for the target environment and upload them through
+the coin-merchant H5 deployment entry in the deployment console. Do not use
+the third-party payment deployment entry. The production domain will show this
+project only after the production package is uploaded.
+
+## Hash routing and optional Nginx compatibility
+
+Hash routes do not require an SPA fallback. The static server only needs to
+serve `index.html` at `/` and the generated files under `/assets/`. For example,
+refreshing `/#/merchant/recharge` sends a request for `/`, not
+`/merchant/recharge`.
+
+The rules in [`deploy/nginx.third-pay.conf`](deploy/nginx.third-pay.conf) may be
+kept for compatibility with old clean URLs. They are not required for normal
+hash-route refreshes. Verify the required root entry point with:
 
 ```bash
-sudo nginx -t
-sudo systemctl reload nginx
+curl -I https://coin-merchant.bigtktool.shop/
 ```
 
-The active TLS (`listen 443 ssl`) server block must contain the same
-`location ^~ /merchant/` and `location /` `try_files` rules. The file in this
-repository listens on port 80; if HTTPS is terminated in a separate Nginx
-block, copy these two locations into that block as well. Verify the fallback
-before testing the login API:
+The request must return `200`. Old clean URLs such as `/merchant/recharge` may
+still return `404`; use `/#/merchant/recharge` after deploying this build.
 
-```bash
-curl -I https://third-pay.bigtktool.shop/index.html
-curl -I https://third-pay.bigtktool.shop/merchant/login
-```
-
-Both requests should return `200`, with the second request serving the same
-`index.html` document as the first.
-
-## Run
+## Local development
 
 ```bash
 npm install

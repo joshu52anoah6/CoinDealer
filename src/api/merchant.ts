@@ -4,8 +4,14 @@ import type {
   CheckRechargeOrderResponse,
   CreateChannelRechargeOrderResponse,
   CoinMerchantRechargeConfigResponse,
+  FiatCurrencyResponse,
   MerchantBalanceResponse,
   MerchantPayProfile,
+  MerchantTransferRecordListInput,
+  MerchantTransferRecordListResponse,
+  MerchantUserInfoResponse,
+  RechargeOrderListResponse,
+  RechargeOrderStatusFilter,
   MerchantTransferResponse,
   SaveMerchantPayProfileResponse,
 } from '../types/api'
@@ -38,6 +44,11 @@ export const merchantApi = {
     return post<CoinMerchantRechargeConfigResponse>(path, {}, { token, merchantEncrypted: isMerchantEncryptionEnabled() })
   },
 
+  getPaymentRegions(token: string) {
+    const path = import.meta.env.VITE_MERCHANT_PAYMENT_REGION_PATH || '/coinMerchantRechargeCfg/paymentRegionList'
+    return post<FiatCurrencyResponse>(path, {}, { token, merchantEncrypted: isMerchantEncryptionEnabled() })
+  },
+
   createRecharge(input: MerchantRechargeInput, token: string) {
     const path = import.meta.env.VITE_MERCHANT_RECHARGE_PATH || '/rechargeOrder/createCoinMerchantChannelRechargeOrder'
     return post<MerchantRechargeResponse>(path, input, { token, merchantEncrypted: isMerchantEncryptionEnabled() })
@@ -48,6 +59,15 @@ export const merchantApi = {
     return post<CheckRechargeOrderResponse>(path, { orderId }, { token, merchantEncrypted: isMerchantEncryptionEnabled() })
   },
 
+  getRechargeOrdersByStatus(statusFilter: RechargeOrderStatusFilter, token: string) {
+    const path = import.meta.env.VITE_MERCHANT_ORDER_LIST_PATH || '/rechargeOrder/myRechargeOrderList'
+    return post<RechargeOrderListResponse>(path, {
+      pageIndex: 1,
+      pageSize: 20,
+      statusFilter,
+    }, { token, merchantEncrypted: isMerchantEncryptionEnabled() })
+  },
+
   transferGold(input: MerchantTransferInput, token: string) {
     const path = import.meta.env.VITE_MERCHANT_TRANSFER_PATH || '/gold/transferGold'
     return post<MerchantTransferResponse>(path, input, { token, merchantEncrypted: isMerchantEncryptionEnabled() })
@@ -56,6 +76,16 @@ export const merchantApi = {
   getBalance(token: string) {
     const path = import.meta.env.VITE_MERCHANT_BALANCE_PATH || '/userInfo/get'
     return post<MerchantBalanceResponse>(path, {}, { token, merchantEncrypted: isMerchantEncryptionEnabled() })
+  },
+
+  getUserInfo(userId: number, token: string) {
+    const path = import.meta.env.VITE_MERCHANT_BALANCE_PATH || '/userInfo/get'
+    return post<MerchantUserInfoResponse>(path, { userId }, { token, merchantEncrypted: isMerchantEncryptionEnabled() })
+  },
+
+  getTransferRecords(input: MerchantTransferRecordListInput, token: string) {
+    const path = import.meta.env.VITE_MERCHANT_TRANSFER_RECORD_PATH || '/gold/getCoinMerchantTransferRecordList'
+    return post<MerchantTransferRecordListResponse>(path, input, { token, merchantEncrypted: isMerchantEncryptionEnabled() })
   },
 
   getPayProfile(token: string) {

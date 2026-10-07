@@ -2,9 +2,13 @@ import {
   COIN_MERCHANT_CLIENT_HEADER,
   decryptMerchantBody,
   encryptMerchantBody,
-} from './merchantCrypto'
+} from './merchantCrypto.ts'
+import { createBrowserClientVersionReloader } from '../utils/clientVersionReloader.ts'
 
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
+const API_BASE_URL = (import.meta.env?.VITE_API_BASE_URL || '').replace(/\/$/, '')
+const reloadOutdatedClient = createBrowserClientVersionReloader({
+  latestClientBaseUrl: import.meta.env?.VITE_MERCHANT_SITE_URL,
+})
 
 export class ApiError extends Error {
   status: number
@@ -53,6 +57,57 @@ function isSuccessCode(code: unknown) {
   return code === undefined || code === 0 || code === 200 || code === '0' || code === '200' || code === 'ok' || code === 'success'
 }
 
+function isClientVersionOutdated(payload: unknown) {
+  return responseCode(payload) === 153
+}
+
+function parsePlaintextResponse(text: string) {
+  if (!text) return undefined
+  try {
+    return JSON.parse(text) as unknown
+  } catch {
+    return text
+  }
+}
+
+export interface ResponsePayloadDecoderOptions {
+  encrypted: boolean
+  status: number
+  decrypt?: (body: string) => Promise<unknown>
+  onClientVersionOutdated?: () => void
+  onProtectedResponseAccepted?: () => void
+}
+
+/** Inspect plaintext code=153 before requiring decryption with an outdated key. */
+export async function decodeResponsePayload(
+  text: string,
+  options: ResponsePayloadDecoderOptions,
+) {
+  const plaintextPayload = parsePlaintextResponse(text)
+  if (isClientVersionOutdated(plaintextPayload)) {
+    options.onClientVersionOutdated?.()
+    return plaintextPayload
+  }
+
+  if (!options.encrypted) return plaintextPayload
+
+  let payload: unknown
+  try {
+    payload = text
+      ? await (options.decrypt ?? decryptMerchantBody)(text)
+      : undefined
+  } catch (error) {
+    throw new ApiError('The encrypted merchant API response could not be authenticated.', options.status, { cause: error })
+  }
+
+  if (isClientVersionOutdated(payload)) {
+    options.onClientVersionOutdated?.()
+  } else if (text) {
+    options.onProtectedResponseAccepted?.()
+  }
+  return payload
+}
+
 export async function post<T>(path: string, body: unknown, options: RequestOptions = {}): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -79,20 +134,12 @@ export async function post<T>(path: string, body: unknown, options: RequestOptio
   })
 
   const text = await response.text()
-  let payload: unknown = undefined
-  if (options.merchantEncrypted) {
-    try {
-      payload = text ? await decryptMerchantBody(text) : undefined
-    } catch (error) {
-      throw new ApiError('The encrypted merchant API response could not be authenticated.', response.status, { cause: error })
-    }
-  } else {
-    try {
-      payload = text ? JSON.parse(text) : undefined
-    } catch {
-      payload = text
-    }
-  }
+  const payload = await decodeResponsePayload(text, {
+    encrypted: options.merchantEncrypted === true,
+    status: response.status,
+    onClientVersionOutdated: reloadOutdatedClient,
+    onProtectedResponseAccepted: reloadOutdatedClient.markHealthy,
+  })
 
   if (!response.ok) {
     const message = responseMessage(payload) || `Request failed (${response.status})`
